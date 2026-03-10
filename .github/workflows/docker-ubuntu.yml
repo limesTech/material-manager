@@ -1,4 +1,3 @@
-# Snipe-IT Docker image build for hub.docker.com
 name: Docker images (Ubuntu)
 
 # Run this Build for all pushes to 'master' or develop branch, or tagged releases.
@@ -6,13 +5,12 @@ name: Docker images (Ubuntu)
 on:
   push:
     branches:
-      - master
-      - develop
+      - jdav-dev
+      - jdav-prod
     tags:
       - 'v**'
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
-
   pull_request:
 
 permissions:
@@ -20,24 +18,21 @@ permissions:
 
 jobs:
   docker:
-    # Ensure this job never runs on forked repos. It's only executed for 'grokability/snipe-it'
-    if: github.repository == 'grokability/snipe-it'
+    # Ensure this job never runs on forked repos. It's only executed for 'limestech/material-manager'
+    if: github.repository == 'limestech/material-manager'
     runs-on: ubuntu-latest
     env:
-      # Define tags to use for Docker images based on Git tags/branches (for docker/metadata-action)
-      # For a new commit on default branch (master), use the literal tag 'latest' on Docker image.
-      # For a new commit on other branches, use the branch name as the tag for Docker image.
-      # For a new tag, copy that tag name as the tag for Docker image.
       IMAGE_TAGS: |
         type=raw,value=latest,enable=${{ endsWith(github.ref, github.event.repository.default_branch) }}
         type=ref,event=branch,enable=${{ !endsWith(github.ref, github.event.repository.default_branch) }}
         type=ref,event=tag
         type=semver,pattern=v{{major}}-latest
-      # Define default tag "flavor" for docker/metadata-action per
-      # https://github.com/docker/metadata-action#flavor-input
-      # We turn off 'latest' tag by default.
       TAGS_FLAVOR: |
         latest=false
+      
+      # Define the GitHub Packages registry URL
+      REGISTRY_URL: ghcr.io
+      REPOSITORY: ${{ github.repository }}
 
     steps:
       # https://github.com/actions/checkout
@@ -49,38 +44,34 @@ jobs:
         uses: docker/setup-buildx-action@v4
 
       # https://github.com/docker/login-action
-      - name: Login to DockerHub
-        # Only login if not a PR, as PRs only trigger a Docker build and not a push
-        if: github.event_name != 'pull_request'
+        name: Login to GitHub Container Registry
         uses: docker/login-action@v4
         with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_ACCESS_TOKEN }}
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN}}
 
       ###############################################
-      # Build/Push the 'snipe/snipe-it' image
+      # Build/Push the 'limestech/material-manager' image
       ###############################################
       # https://github.com/docker/metadata-action
       # Get Metadata for docker_build step below
-      - name: Sync metadata (tags, labels) from GitHub to Docker for 'snipe-it' image
+      - name: Sync metadata (tags, labels) from GitHub to Docker for 'material-manager' image
         id: meta_build
         uses: docker/metadata-action@v6
         with:
-          images: snipe/snipe-it
+          images: ${{ env.REGISTRY_URL }}/${{ env.REPOSITORY }}
           tags: ${{ env.IMAGE_TAGS }}
           flavor: ${{ env.TAGS_FLAVOR }}
 
       # https://github.com/docker/build-push-action
-      - name: Build and push 'snipe-it' image
+      - name: Build and push 'material-manager' image
         id: docker_build
         uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile
           platforms: linux/amd64,linux/arm64
-          # For pull requests, we run the Docker build (to ensure no PR changes break the build),
-          # but we ONLY do an image push to DockerHub if it's NOT a PR
           push: ${{ github.event_name != 'pull_request' }}
-          # Use tags / labels provided by 'docker/metadata-action' above
           tags: ${{ steps.meta_build.outputs.tags }}
           labels: ${{ steps.meta_build.outputs.labels }}
